@@ -4,14 +4,14 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 
 class RolloutStorage(object):
     def __init__(self, num_steps, num_processes, obs_shape, action_space, state_size, num_options):
-        self.observations = torch.zeros(num_steps + 1, *obs_shape)
-        self.states = torch.zeros(num_steps + 1, state_size)
-        self.rewards = torch.zeros(num_steps, 1)
-        self.value_preds = torch.zeros(num_steps + 1, 1)
-        self.returns = torch.zeros(num_steps + 1, 1)
-        self.action_log_probs = torch.zeros(num_steps, 1)
-        self.options = torch.zeros(num_steps + 1,  1)
-        self.optionSelection = torch.zeros(num_steps + 1,1)
+        self.observations = torch.zeros(num_steps + 1, num_processes, *obs_shape)
+        self.states = torch.zeros(num_steps + 1, num_processes, tate_size)
+        self.rewards = torch.zeros(num_steps, num_processes, 1)
+        self.value_preds = torch.zeros(num_steps + 1, num_processes, 1)
+        self.returns = torch.zeros(num_steps + 1, num_processes, 1)
+        self.action_log_probs = torch.zeros(num_steps, num_processes, 1)
+        self.options = torch.zeros(num_steps + 1, num_processes, 1)
+        self.optionSelection = torch.zeros(num_steps + 1,num_processes, 1)
         self.num_options = num_options
         if action_space.__class__.__name__ == 'Discrete':
             action_shape = 1
@@ -20,7 +20,7 @@ class RolloutStorage(object):
         self.actions = torch.zeros(num_steps, action_shape)
         if action_space.__class__.__name__ == 'Discrete':
             self.actions = self.actions.long()
-        self.masks = torch.ones(num_steps + 1, 1)
+        self.masks = torch.ones(num_steps + 1, num_processes, 1)
 
     def cuda(self):
         self.observations = self.observations.cuda()
@@ -61,10 +61,7 @@ class RolloutStorage(object):
             for step in reversed(range(self.rewards.size(0))):
                 self.returns[step] = self.returns[step + 1] * \
                     gamma * self.masks[step + 1] + self.rewards[step]
-        
 
-    def group_by_option(self):
-        for i in range
 
     def feed_forward_generator(self, advantages, num_mini_batch):
         num_steps, num_processes = self.rewards.size()[0:2]
