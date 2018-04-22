@@ -122,21 +122,21 @@ def main():
     if args.cuda:
         current_obs = current_obs.cuda()
         rollouts.cuda()
-    option = -1 
+    options = [-1] * num_options
     start = time.time()
     for j in range(num_updates):
         for step in range(args.num_steps):
             # Choose Option 
-            if option == -1:
-                selection_value, option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
+            if options == -1:
+                selection_value, options, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
             print("option is:")
-            print(option)
+            print(options)
 
             # Sample actions
             value, action, action_log_prob, states = actor_critic.get_output(
-                    option,
+                    options,
                     Variable(rollouts.observations[step], volatile=True),
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
@@ -145,7 +145,9 @@ def main():
             print(action)
 
             # Termination 
-            term_value, termination, termination_log_prob, _ = actor_critic.get_termination(Variable(rollouts.observations[step], volatile=True),
+            term_value, termination, termination_log_prob, _ = actor_critic.get_termination(
+                options,
+                Variable(rollouts.observations[step], volatile=True),
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
             print("termination is:")
@@ -156,16 +158,16 @@ def main():
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
 
-            newIndex = obs_to_int(obs)
+            # newIndex = obs_to_int(obs)
 
             # If done then clean the history of observations.
-            masks = torch.FloatTensor(0.0 if done_ else 1.0)
+            masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
             final_rewards *= masks
             final_rewards += (1 - masks) * episode_rewards
             episode_rewards *= masks
 
             if termination:
-                option = -1 
+                options = -1
 
             if args.cuda:
                 masks = masks.cuda()
@@ -176,7 +178,7 @@ def main():
                 current_obs *= masks
 
             update_current_obs(obs)
-            rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, option, termination)
+            rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, options, termination)
 
         next_value = actor_critic(Variable(rollouts.observations[-1], volatile=True),
                                   Variable(rollouts.states[-1], volatile=True),
@@ -193,7 +195,7 @@ def main():
             for e in range(args.ppo_epoch):
                 for i in range(args.num_steps):
                     # Get the ith step during exploration
-                    option = Variable(rollouts.options[i])
+                    options = Variable(rollouts.options[i])
                     adv_targ = Variable(advantages[i])
                     old_action_log_probs = rollouts.action_log_probs[i]
                     termination = Variable(rollouts.optionSelection[i])
@@ -202,13 +204,13 @@ def main():
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
-                        Variable(rollouts.actions[i]), option)
+                        Variable(rollouts.actions[i]), options)
                     ratio = torch.exp(action_log_probs - Variable(old_action_log_probs))
                     surr1 = ratio * adv_targ
                     surr2 = torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param) * adv_targ
                     action_loss = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
                     value_loss = (Variable(self.returns[i]) - values).pow(2).mean()
-                    optionOptimizer = optionOptimizers[option]
+                    optionOptimizer = optionOptimizers[options]
                     optionOptimizer.zero_grad()
                     (action_loss + value_loss).backward()
                     nn.utils.clip_grad_norm(optionOptimizers.parameters(), args.max_grad_norm)
@@ -219,7 +221,7 @@ def main():
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
-                        option)
+                        options)
                     V_Omega = selection_log_prob * values 
 
                     # Update termination parameters 
@@ -228,12 +230,12 @@ def main():
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
                         termination, 
-                        option)
+                        options)
                     if termination:
                         termination_loss = - torch.exp(termination_log_prob) * V_Omega - (1 - torch.exp(termination_log_prob)) * values
                     else:
                         termination_loss = - (1 - torch.exp(termination_log_prob)) * V_Omega - torch.exp(termination_log_prob) * values
-                    terminationOptimizer = terminationOptimizers[option]
+                    terminationOptimizer = terminationOptimizers[options]
                     terminationOptimizer.zero_grad()
                     (termination_loss).backward()
                     nn.utils.clip_grad_norm(terminationOptimizers.parameters(), args.max_grad_norm)

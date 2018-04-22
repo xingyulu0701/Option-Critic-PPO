@@ -54,15 +54,25 @@ class OptionCritic(FFPolicy):
         self.featureNN = CNNPolicy(num_inputs, use_gru)
         self.optionSelection = OptionPolicy(64, num_options, None, use_gru)
         self.intraOption = [OptionPolicy(64, None, action_space, use_gru) for i in range(num_options)]
-        self.terminationOption = [OptionPolicy(64, 1, None, use_gru) for i in range(num_options)]
+        self.terminationOption = [OptionPolicy(64, 2, None, use_gru) for i in range(num_options)]
         # self.state_values = torch.zeros(num_states)
 
-    def get_output(self, num_option, inputs, states, masks, deterministic= False):
+    def get_output(self, options, inputs, states, masks, deterministic= False):
         features = self.featureNN(inputs, states, masks)
-        option = self.intraOption[num_options]
-        value, x, states = option.forward(features, states, masks)
-        action = option.dist.sample(x, deterministic = deterministic)
-        action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, action)
+        value_list, logits_list, states_list = [], [], []
+        for j in range(len(options)):
+        	option = options[j].data[0]
+        	option_nn = self.intraOption[options]
+        	value_j, x_j, states_j = option_nn.forward(features, states, masks)
+        	value_list.append(value_j)
+        	logits_list.append(logits_j)
+        	states_list.append(states_j)
+        value = torch.cat(value_list)
+        dist_inputs = torch.cat(logits_list)
+        states = torch.cat(states_list)
+        dist = self.intraOption[0].dist
+        action = dist.sample(dist_inputs, deterministic = deterministic)
+        action_log_probs, dist_entropy = dist.logprobs_and_entropy(dist_inputs, action)
         return value, action, action_log_probs, states 
 
     def get_option(self, inputs, states, masks, deterministic = False):
@@ -72,13 +82,25 @@ class OptionCritic(FFPolicy):
         option_log_probs, dist_entropy = self.optionSelection.dist.logprobs_and_entropy(x, option)
         return value, option, option_log_probs, states 
 
-    def get_termination(self, num_option, inputs, states, masks, deterministic = False):
+    def get_termination(self, options, inputs, states, masks, deterministic = False):
         features = self.featureNN(inputs, states, masks)
-        option = self.terminationOption[num_options]
-        value, x, states = option.forward(features, states, masks)
-        action = option.dist.sample(x, deterministic = deterministic)
-        action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, action)
-        return value, action, action_log_probs, states 
+
+        value_list, logits_list, states_list = [], [], []
+        for j in range(len(options)):
+            option = options[j].data[0]
+            term_nn = self.terminationOption[option]
+            value_j, logits_j, states_j, = term_nn.forward(features[j:j + 1], states[j:j + 1], masks[j:j + 1])
+            value_list.append(value_j)
+            logits_list.append(logits_j)
+            states_list.append(states_j)
+        value = torch.cat(value_list)
+        dist_inputs = torch.cat(logits_list)
+        states = torch.cat(states_list)
+
+        dist = self.terminationOption[0].dist
+        actions = dist.sample(dist_inputs, deterministic = deterministic)
+        action_log_probs, dist_entropy = dist.logprobs_and_entropy(dist_inputs, actions)
+        return value, actions, action_log_probs, states
 
 class OptionPolicy(FFPolicy):
     def __init__(self, num_inputs, num_outputs, action_space, use_gru):
@@ -95,7 +117,7 @@ class OptionPolicy(FFPolicy):
         else:
             self.dist = Categorical(512, num_outputs)
         self.conv1 = nn.Conv2d(64, 64, 3, stride = 1)
-        self.linear1 = nn.Linear(32*7*7, 512)
+        self.linear1 = nn.Linear(1600, 512)
         self.linear_critic = nn.Linear(512, 1)
         self.train()
         self.reset_parameters()
@@ -120,7 +142,7 @@ class OptionPolicy(FFPolicy):
     def forward(self, inputs, states, masks):
         x = self.conv1(inputs / 255.0)
         x = F.relu(x)
-        x = x.view(-1, 32 * 7 * 7)
+        x = x.view(-1, 1600)
         x = self.linear1(x)
         x = F.relu(x)
         value = self.linear_critic(x)
@@ -152,7 +174,6 @@ class CNNPolicy(FFPolicy):
         self.conv2.weight.data.mul_(relu_gain)
         self.conv3.weight.data.mul_(relu_gain)
         
-
     def forward(self, inputs, states, masks):
         x = self.conv1(inputs / 255.0)
         x = F.relu(x)
@@ -163,7 +184,7 @@ class CNNPolicy(FFPolicy):
         x = self.conv3(x)
         x = F.relu(x)
 
-        return x, states
+        return x
 
 
 def weights_init_mlp(m):
