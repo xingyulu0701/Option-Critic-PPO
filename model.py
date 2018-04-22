@@ -56,23 +56,29 @@ class OptionCritic(FFPolicy):
         self.intraOption = [OptionPolicy(64, None, action_space, use_gru) for i in range(num_options)]
         self.terminationOption = [OptionPolicy(64, 2, None, use_gru) for i in range(num_options)]
         # self.state_values = torch.zeros(num_states)
+        for i in range(num_options):
+           self.add_module("intra" + str(i), self.intraOption[i])
+           self.add_module("term" + str(i), self.terminationOption[i])
+           
+    def get_value(self, inputs, states, masks):
+        
 
     def get_output(self, options, inputs, states, masks, deterministic= False):
         features = self.featureNN(inputs, states, masks)
         value_list, logits_list, states_list = [], [], []
         for j in range(len(options)):
-                option = options[j].data[0]
+                option = options[j]
                 option_nn = self.intraOption[option]
-                print(features)
-                print(states)
-                print(masks)
-                value_j, x_j, states_j = option_nn.forward(features, states, masks)
-                value_list.append(value_j)
-                logits_list.append(logits_j)
-                states_list.append(states_j)
-        value = torch.cat(value_list)
-        dist_inputs = torch.cat(logits_list)
-        states = torch.cat(states_list)
+                #print(features)
+                #print(states)
+                #print(masks)
+                value_j, logits_j, states_j = option_nn.forward(features, states, masks)
+                value_list.append(value_j[j].view(1, -1))
+                logits_list.append(logits_j[j].view(1, -1))
+                states_list.append(states_j[j].view(1, -1))
+        value = torch.cat(value_list, dim = 0)
+        dist_inputs = torch.cat(logits_list, dim = 0)
+        states = torch.cat(states_list, dim = 0)
         dist = self.intraOption[0].dist
         action = dist.sample(dist_inputs, deterministic = deterministic)
         action_log_probs, dist_entropy = dist.logprobs_and_entropy(dist_inputs, action)
@@ -90,7 +96,7 @@ class OptionCritic(FFPolicy):
 
         value_list, logits_list, states_list = [], [], []
         for j in range(len(options)):
-            option = options[j].data[0]
+            option = options[j]
             term_nn = self.terminationOption[option]
             value_j, logits_j, states_j, = term_nn.forward(features[j:j + 1], states[j:j + 1], masks[j:j + 1])
             value_list.append(value_j)
@@ -143,7 +149,10 @@ class OptionPolicy(FFPolicy):
             self.dist.fc_mean.weight.data.mul_(0.01)
 
     def forward(self, inputs, states, masks):
-        x = self.conv1(inputs / 255.0)
+        try:
+            x = self.conv1(inputs / 255.0)
+        except:
+            import pdb; pdb.set_trace()
         x = F.relu(x)
         x = x.view(-1, 1600)
         x = self.linear1(x)

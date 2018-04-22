@@ -1,3 +1,4 @@
+from tensorboardX import SummaryWriter
 import copy
 import glob
 import os
@@ -42,6 +43,8 @@ except OSError:
     files = glob.glob(os.path.join(args.log_dir, '*.monitor.csv'))
     for f in files:
         os.remove(f)
+
+writer = SummaryWriter(log_dir=args.log_dir)
 
 num_options = 2
 
@@ -112,33 +115,31 @@ def main():
 
     obs = envs.reset()
     update_current_obs(obs)
-
     rollouts.observations[0].copy_(current_obs)
 
     # These variables are used to compute average rewards for all processes.
-    episode_rewards = torch.zeros([ 1])
-    final_rewards = torch.zeros([1])
+    episode_rewards = torch.zeros([args.num_processes, 1])
+    final_rewards = torch.zeros([args.num_processes, 1])
     optionSelection = 0
-    options = Variable(torch.ones([args.num_processes]).type(torch.LongTensor) * -1)
+    options = [-1] * args.num_processes
     if args.cuda:
         current_obs = current_obs.cuda()
         rollouts.cuda()
-        options.cuda()
     start = time.time()
-    print(options)
-    print(options[0])
+    #print(options)
+    #print(options[0])
     for j in range(num_updates):
         for step in range(args.num_steps):
             # Choose Option 
             for i in range(args.num_processes):
-                if options[i].data[0] == -1:
+                if options[i]== -1:
                     selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
                         Variable(rollouts.states[step], volatile=True),
                         Variable(rollouts.masks[step], volatile=True))
-                    print(new_option)
-                options[i] = new_option[i]
-            print("option is:")
-            print(options)
+                   # print(new_option)
+                options[i] = new_option[i].data[0]
+            #print("option is:")
+            #print(options)
 
             # Sample actions
             value, action, action_log_prob, states = actor_critic.get_output(
@@ -147,8 +148,6 @@ def main():
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
             cpu_actions = action.data.squeeze(1).cpu().numpy()
-            print("action is:")
-            print(action)
 
             # Termination 
             term_value, termination, termination_log_prob, _ = actor_critic.get_termination(
@@ -156,8 +155,7 @@ def main():
                 Variable(rollouts.observations[step], volatile=True),
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
-            print("termination is:")
-            print(termination)
+            termination = torch.LongTensor([termination[i].data[0] for i in range(termination.shape[0])])
 
             # Obser reward and next obs
             obs, reward, done, info = envs.step(cpu_actions)
@@ -172,8 +170,9 @@ def main():
             final_rewards += (1 - masks) * episode_rewards
             episode_rewards *= masks
 
-            if termination:
-                options = -1
+            for i in range(termination.shape[0]):
+                if termination[i] == 1:
+                    options[i] = -1
 
             if args.cuda:
                 masks = masks.cuda()
@@ -186,7 +185,7 @@ def main():
             update_current_obs(obs)
             rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, options, termination)
 
-        next_value = actor_critic(Variable(rollouts.observations[-1], volatile=True),
+        next_value = actor_critic.get_value(Variable(rollouts.observations[-1], volatile=True),
                                   Variable(rollouts.states[-1], volatile=True),
                                   Variable(rollouts.masks[-1], volatile=True))[0].data
 
@@ -219,6 +218,7 @@ def main():
                     optionOptimizer = optionOptimizers[options]
                     optionOptimizer.zero_grad()
                     (action_loss + value_loss).backward()
+                    writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
                     nn.utils.clip_grad_norm(optionOptimizers.parameters(), args.max_grad_norm)
                     optionOptimizers.step()
 

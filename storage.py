@@ -17,11 +17,10 @@ class RolloutStorage(object):
             action_shape = 1
         else:
             action_shape = action_space.shape[0]
-        self.actions = torch.zeros(num_steps, action_shape)
+        self.actions = torch.zeros(num_steps, num_processes,  action_shape)
         if action_space.__class__.__name__ == 'Discrete':
             self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
-
     def cuda(self):
         self.observations = self.observations.cuda()
         self.states = self.states.cuda()
@@ -40,8 +39,8 @@ class RolloutStorage(object):
         self.value_preds[step].copy_(value_pred)
         self.rewards[step].copy_(reward)
         self.masks[step + 1].copy_(mask)
-        self.options[step].copy_(option)
-        self.selection[step].copy_(selection)
+        self.options[step].copy_(torch.LongTensor(option))
+        self.optionSelection[step].copy_(selection)
 
     def after_update(self):
         self.observations[0].copy_(self.observations[-1])
