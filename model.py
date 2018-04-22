@@ -61,12 +61,15 @@ class OptionCritic(FFPolicy):
         features = self.featureNN(inputs, states, masks)
         value_list, logits_list, states_list = [], [], []
         for j in range(len(options)):
-        	option = options[j].data[0]
-        	option_nn = self.intraOption[options]
-        	value_j, x_j, states_j = option_nn.forward(features, states, masks)
-        	value_list.append(value_j)
-        	logits_list.append(logits_j)
-        	states_list.append(states_j)
+                option = options[j].data[0]
+                option_nn = self.intraOption[option]
+                print(features)
+                print(states)
+                print(masks)
+                value_j, x_j, states_j = option_nn.forward(features, states, masks)
+                value_list.append(value_j)
+                logits_list.append(logits_j)
+                states_list.append(states_j)
         value = torch.cat(value_list)
         dist_inputs = torch.cat(logits_list)
         states = torch.cat(states_list)

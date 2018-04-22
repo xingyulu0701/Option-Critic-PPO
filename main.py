@@ -119,20 +119,24 @@ def main():
     episode_rewards = torch.zeros([ 1])
     final_rewards = torch.zeros([1])
     optionSelection = 0
-    options = torch.FloatTensor([-1] * num_options)
+    options = Variable(torch.ones([args.num_processes]).type(torch.LongTensor) * -1)
     if args.cuda:
         current_obs = current_obs.cuda()
         rollouts.cuda()
         options.cuda()
-    
     start = time.time()
+    print(options)
+    print(options[0])
     for j in range(num_updates):
         for step in range(args.num_steps):
             # Choose Option 
-            if options == -1:
-                selection_value, options, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
-                    Variable(rollouts.states[step], volatile=True),
-                    Variable(rollouts.masks[step], volatile=True))
+            for i in range(args.num_processes):
+                if options[i].data[0] == -1:
+                    selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
+                        Variable(rollouts.states[step], volatile=True),
+                        Variable(rollouts.masks[step], volatile=True))
+                    print(new_option)
+                options[i] = new_option[i]
             print("option is:")
             print(options)
 
