@@ -119,10 +119,12 @@ def main():
     episode_rewards = torch.zeros([ 1])
     final_rewards = torch.zeros([1])
     optionSelection = 0
+    options = torch.FloatTensor([-1] * num_options)
     if args.cuda:
         current_obs = current_obs.cuda()
         rollouts.cuda()
-    options = [-1] * num_options
+        options.cuda()
+    
     start = time.time()
     for j in range(num_updates):
         for step in range(args.num_steps):
