@@ -1,4 +1,4 @@
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
 import copy
 import glob
 import os
@@ -44,7 +44,7 @@ except OSError:
     for f in files:
         os.remove(f)
 
-writer = SummaryWriter(log_dir=args.log_dir)
+#writer = SummaryWriter(log_dir=args.log_dir)
 
 num_options = 2
 
@@ -60,10 +60,8 @@ def main():
         viz = Visdom(port=args.port)
         win = None
 
-    envs = [make_env(args.env_name, args.seed, i, args.log_dir)
-                for i in range(args.num_processes)]
+    envs = [make_env(args.env_name, args.seed, i, args.log_dir) for i in range(args.num_processes)]
     # env = get_test_env("001")
-
     # num_states = len(env.all_possible_states())
     if args.num_processes > 1:
         envs = SubprocVecEnv(envs)
@@ -96,9 +94,7 @@ def main():
         # optimizer = optim.RMSprop(actor_critic.parameters(), args.lr, eps=args.eps, alpha=args.alpha)
         raise NotImplementedError()
     elif args.algo == 'ppo':
-        optionOptimizers = [optim.Adam(actor_critic.intraOption[i].parameters(), args.lr, eps=args.eps) for i in range(num_options)]
-        terminationOptimizers = [optim.Adam(actor_critic.terminationOption[i].parameters(), args.lr, eps=args.eps) for i in range(num_options)]
-        optionSelectionOptimizer = optim.Adam(actor_critic.optionSelection.parameters(), args.lr, eps = args.eps)
+        optimizer = optim.Adam(actor_critic.parameters(), args.lr, eps = args.eps)
     elif args.algo == 'acktr':
         # optimizer = KFACOptimizer(actor_critic)
         raise NotImplementedError()
@@ -170,9 +166,6 @@ def main():
             final_rewards += (1 - masks) * episode_rewards
             episode_rewards *= masks
 
-            for i in range(termination.shape[0]):
-                if termination[i] == 1:
-                    options[i] = -1
 
             if args.cuda:
                 masks = masks.cuda()
@@ -185,7 +178,18 @@ def main():
             update_current_obs(obs)
             rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, options, termination)
 
-        next_value = actor_critic.get_value(Variable(rollouts.observations[-1], volatile=True),
+            for i in range(termination.shape[0]):
+                if termination[i] == 1:
+                    options[i] = -1
+
+        for i in range(args.num_processes):
+            if options[i]== -1:
+                selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
+                    Variable(rollouts.states[step], volatile=True),
+                    Variable(rollouts.masks[step], volatile=True))
+                # print(new_option)
+            options[i] = new_option[i].data[0]
+        next_value = actor_critic.get_output(options,Variable(rollouts.observations[-1], volatile=True),
                                   Variable(rollouts.states[-1], volatile=True),
                                   Variable(rollouts.masks[-1], volatile=True))[0].data
 
@@ -200,9 +204,11 @@ def main():
             for e in range(args.ppo_epoch):
                 for i in range(args.num_steps):
                     # Get the ith step during exploration
-                    options = Variable(rollouts.options[i])
+                    options = rollouts.options[i]
+                    print(options)
                     adv_targ = Variable(advantages[i])
                     old_action_log_probs = rollouts.action_log_probs[i]
+                    print(old_action_log_probs)
                     termination = Variable(rollouts.optionSelection[i])
                     # Use critic value of option nn to update option parameters
                     values, action_log_probs, dist_entropy, states = actor_critic.evaluate_option(
@@ -210,19 +216,18 @@ def main():
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
                         Variable(rollouts.actions[i]), options)
+                    print(action_log_probs)
                     ratio = torch.exp(action_log_probs - Variable(old_action_log_probs))
                     surr1 = ratio * adv_targ
                     surr2 = torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param) * adv_targ
                     action_loss = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
-                    value_loss = (Variable(self.returns[i]) - values).pow(2).mean()
-                    optionOptimizer = optionOptimizers[options]
-                    optionOptimizer.zero_grad()
+                    value_loss = (Variable(rollouts.returns[i]) - values).pow(2).mean()
+                    optimizer.zero_grad()
                     (action_loss + value_loss).backward()
-                    writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
-                    nn.utils.clip_grad_norm(optionOptimizers.parameters(), args.max_grad_norm)
-                    optionOptimizers.step()
+                    #writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
+                    nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
+                    optimizer.step()
 
-                    # Use critic value of option nn to obtain V_Omega. Not correct at the moment. Need to fix this part.
                     selection_log_prob = actor_critic.evaluate_selection(
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
