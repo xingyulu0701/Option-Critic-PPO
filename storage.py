@@ -46,7 +46,7 @@ class RolloutStorage(object):
         self.observations[0].copy_(self.observations[-1])
         self.states[0].copy_(self.states[-1])
         self.masks[0].copy_(self.masks[-1])
-
+        self.options[0].copy_(self.options[-1])
     def compute_returns(self, next_value, use_gae, gamma, tau):
         if use_gae:
             self.value_preds[-1] = next_value

@@ -31,7 +31,7 @@ class FFPolicy(nn.Module):
         value_list, logits_list, states_list = [], [], []
         for j in range(len(options)):
                 option = int(options[j,0])
-                print(option)
+                #print(option)
                 option_nn = self.intraOption[option]
                 #print(features)
                 #print(states)
@@ -47,14 +47,29 @@ class FFPolicy(nn.Module):
         action_log_probs, dist_entropy = dist.logprobs_and_entropy(dist_inputs, action)
         return value, action_log_probs, dist_entropy, states 
 
-    def evaluate_selection(self, inputs, states, masks, option):
-        value, x, states = self.optionSelection.forward(inputs, states, masks)
+    def evaluate_selection(self, inputs, states, masks, termination, option):
+        features = self.featureNN(inputs, states, masks)
+        value, x, states = self.optionSelection.forward(features, states, masks)
         option_log_probs, dist_entropy = self.optionSelection.dist.logprobs_and_entropy(x, option)
         return option_log_probs
 
-    def evaluate_termination(self, inputs, states, masks, termination, option):
-        value, x, states = self.terminationOption[option].forward(inputs, states, masks)
-        termination_log_probs, dist_entropy = self.terminationOption[option].dist.logprobs_and_entropy(x, termination)
+    def evaluate_termination(self, inputs, states, masks, termination, options):
+        features = self.featureNN(inputs, states, masks)
+
+        value_list, logits_list, states_list = [], [], []
+        for j in range(len(options)):
+            option = int(options[j])
+            term_nn = self.terminationOption[option]
+            value_j, logits_j, states_j, = term_nn.forward(features[j:j + 1], states[j:j + 1], masks[j:j + 1])
+            value_list.append(value_j)
+            logits_list.append(logits_j)
+            states_list.append(states_j)
+        value = torch.cat(value_list)
+        dist_inputs = torch.cat(logits_list)
+        states = torch.cat(states_list)
+
+        dist = self.terminationOption[0].dist
+        termination_log_probs, dist_entropy = dist.logprobs_and_entropy(dist_inputs, termination)
         return termination_log_probs
 
 class OptionCritic(FFPolicy):

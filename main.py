@@ -117,7 +117,6 @@ def main():
     episode_rewards = torch.zeros([args.num_processes, 1])
     final_rewards = torch.zeros([args.num_processes, 1])
     optionSelection = 0
-    options = [-1] * args.num_processes
     if args.cuda:
         current_obs = current_obs.cuda()
         rollouts.cuda()
@@ -125,6 +124,7 @@ def main():
     #print(options)
     #print(options[0])
     for j in range(num_updates):
+        options = [-1] * args.num_processes
         for step in range(args.num_steps):
             # Choose Option 
             for i in range(args.num_processes):
@@ -174,7 +174,6 @@ def main():
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
                 current_obs *= masks
-
             update_current_obs(obs)
             rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, options, termination)
 
@@ -189,6 +188,7 @@ def main():
                     Variable(rollouts.masks[step], volatile=True))
                 # print(new_option)
             options[i] = new_option[i].data[0]
+        rollouts.options[step+1].copy_(torch.LongTensor(options))
         next_value = actor_critic.get_output(options,Variable(rollouts.observations[-1], volatile=True),
                                   Variable(rollouts.states[-1], volatile=True),
                                   Variable(rollouts.masks[-1], volatile=True))[0].data
@@ -205,34 +205,30 @@ def main():
                 for i in range(args.num_steps):
                     # Get the ith step during exploration
                     options = rollouts.options[i]
-                    print(options)
+                    #print(options)
                     adv_targ = Variable(advantages[i])
                     old_action_log_probs = rollouts.action_log_probs[i]
-                    print(old_action_log_probs)
-                    termination = Variable(rollouts.optionSelection[i])
+                    termination = rollouts.optionSelection[i]
+                    #print(termination)
                     # Use critic value of option nn to update option parameters
                     values, action_log_probs, dist_entropy, states = actor_critic.evaluate_option(
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
                         Variable(rollouts.actions[i]), options)
-                    print(action_log_probs)
+                    #print(action_log_probs)
                     ratio = torch.exp(action_log_probs - Variable(old_action_log_probs))
                     surr1 = ratio * adv_targ
                     surr2 = torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param) * adv_targ
                     action_loss = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
                     value_loss = (Variable(rollouts.returns[i]) - values).pow(2).mean()
-                    optimizer.zero_grad()
-                    (action_loss + value_loss).backward()
-                    #writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
-                    nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
-                    optimizer.step()
 
                     selection_log_prob = actor_critic.evaluate_selection(
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
-                        options)
+                        Variable(termination),
+                        Variable(rollouts.options[i].type(torch.LongTensor)))
                     V_Omega = selection_log_prob * values 
 
                     # Update termination parameters 
@@ -240,23 +236,26 @@ def main():
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
-                        termination, 
-                        options)
-                    if termination:
-                        termination_loss = - torch.exp(termination_log_prob) * V_Omega - (1 - torch.exp(termination_log_prob)) * values
-                    else:
-                        termination_loss = - (1 - torch.exp(termination_log_prob)) * V_Omega - torch.exp(termination_log_prob) * values
-                    terminationOptimizer = terminationOptimizers[options]
-                    terminationOptimizer.zero_grad()
-                    (termination_loss).backward()
-                    nn.utils.clip_grad_norm(terminationOptimizers.parameters(), args.max_grad_norm)
-                    terminationOptimizer.step()
+                        Variable(termination.type(torch.LongTensor)), 
+                        rollouts.options[i+1])
+                    left_values = []
+                    right_values = []
+                    for i in range(args.num_processes):
+                        if int(termination[i]) == 1:
+                            left_values.append(V_Omega[i])
+                            right_values.append(values[i])
+                        elif int(termination[i]) == 0:
+                            left_values.append(values[i])
+                            right_values.append(V_Omega[i])
+                    left_values = torch.cat(left_values)
+                    right_values = torch.cat(right_values)
+                    termination_loss = (- torch.exp(termination_log_prob) * left_values - (1 - torch.exp(termination_log_prob)) * right_values).mean()
 
-                    if i != 0 and rollouts.optionSelection[i - 1]:
-                        optionSelectionOptimizer.zero_grad()
-                        (V_Omega).backward()
-                        nn.utils.clip_grad_norm(optionSelectionOptimizer.parameters(), args.max_grad_norm)
-                        optionSelectionOptimizer.step()
+                    optimizer.zero_grad()
+                    (action_loss + value_loss+ termination_loss - V_Omega.mean()).backward()
+                    #writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
+                    nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
+                    optimizer.step()
 
         rollouts.after_update()
 
