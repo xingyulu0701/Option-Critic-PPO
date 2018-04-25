@@ -3,7 +3,7 @@ import copy
 import glob
 import os
 import time
-
+import gtimer as gt 
 import gym
 import numpy as np
 import torch
@@ -21,7 +21,6 @@ from kfac import KFACOptimizer
 from model import CNNPolicy, MLPPolicy, OptionCritic
 from storage import RolloutStorage
 from visualize import visdom_plot
-
 
 
 args = get_args()
@@ -127,16 +126,17 @@ def main():
         options = [-1] * args.num_processes
         for step in range(args.num_steps):
             # Choose Option 
-            for i in range(args.num_processes):
-                if options[i]== -1:
-                    selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
-                        Variable(rollouts.states[step], volatile=True),
-                        Variable(rollouts.masks[step], volatile=True))
+            t0 = time.time()
+            selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
+                Variable(rollouts.states[step], volatile=True),
+                Variable(rollouts.masks[step], volatile=True))
                    # print(new_option)
-                options[i] = new_option[i].data[0]
+            for i in range(args.num_processes):
+                if options[i] == -1:
+                    options[i] = new_option[i].data[0]
             #print("option is:")
             #print(options)
-
+            t1 = time.time()
             # Sample actions
             value, action, action_log_prob, states = actor_critic.get_output(
                     options,
@@ -144,7 +144,7 @@ def main():
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
             cpu_actions = action.data.squeeze(1).cpu().numpy()
-
+            t2 = time.time()
             # Termination 
             term_value, termination, termination_log_prob, _ = actor_critic.get_termination(
                 options,
@@ -152,7 +152,7 @@ def main():
                     Variable(rollouts.states[step], volatile=True),
                     Variable(rollouts.masks[step], volatile=True))
             termination = torch.LongTensor([termination[i].data[0] for i in range(termination.shape[0])])
-
+            t3 = time.time()
             # Obser reward and next obs
             obs, reward, done, info = envs.step(cpu_actions)
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
@@ -176,11 +176,19 @@ def main():
                 current_obs *= masks
             update_current_obs(obs)
             rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks, options, termination)
-
+            
             for i in range(termination.shape[0]):
                 if termination[i] == 1:
                     options[i] = -1
-
+            t4 = time.time()
+            #print("part1")
+            #print(t1 - t0)
+            #print("part2")
+            #print(t2-t1)
+            #print("part3")
+            #print(t3-t2)
+            #print("part4")
+            #print(t4-t3)
         for i in range(args.num_processes):
             if options[i]== -1:
                 selection_value, new_option, option_log_prob, states = actor_critic.get_option(Variable(rollouts.observations[step], volatile=True),
@@ -255,7 +263,6 @@ def main():
                     (action_loss + value_loss+ termination_loss - V_Omega.mean()).backward()
                     #writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
                     nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
-                    optimizer.step()
 
         rollouts.after_update()
 
