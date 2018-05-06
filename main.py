@@ -295,13 +295,16 @@ def main():
                        final_rewards.min(),
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
+            print(args.vis)
+            print(args.vis_interval)
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
+                print("hit")
                 win = visdom_plot(viz, win, args.log_dir, args.env_name,
                                   args.algo, args.num_frames)
-            except IOError:
-                pass
+            # except IOError:
+            #     pass
 
 if __name__ == "__main__":
     main()
