@@ -881,6 +881,19 @@ test_env_specs = {
     food_reward=1,
     goal_reward=1,
   ),
+  '006a': EnvSpec(
+    symbolic_grid="""
+    ###########
+    # A .G..  #
+    #   .  .  #
+    #   .  .  #
+    #   .  .  #
+    #   ....  #
+    ###########
+    """,
+    food_reward=4,
+    goal_reward=1
+  )
 }
 
 

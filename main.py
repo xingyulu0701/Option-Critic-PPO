@@ -1,4 +1,4 @@
-#from tensorboardX import SummaryWriter
+from tensorboardX import SummaryWriter
 import copy
 import glob
 import os
@@ -43,7 +43,7 @@ except OSError:
     for f in files:
         os.remove(f)
 
-#writer = SummaryWriter(log_dir=args.log_dir)
+writer = SummaryWriter(log_dir=args.log_dir)
 
 num_options = 2
 
@@ -259,10 +259,9 @@ def main():
                     left_values = torch.cat(left_values)
                     right_values = torch.cat(right_values)
                     termination_loss = (- torch.exp(termination_log_prob) * left_values - (1 - torch.exp(termination_log_prob)) * right_values).mean()
-
                     optimizer.zero_grad()
+
                     (action_loss + value_loss+ termination_loss - V_Omega.mean()).backward()
-                    #writer.add_scalar(tag="action_loss",scalar_value=action_loss.data[0], global_step=j)
                     nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
 
         rollouts.after_update()
@@ -295,6 +294,8 @@ def main():
                        final_rewards.min(),
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
+            writer.add_scaler("data/final_reward", final_rewards.max())
+
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
