@@ -237,7 +237,7 @@ def main():
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
                         Variable(termination),
-                        Variable(rollouts.options[i].type(torch.LongTensor)))
+                        Variable(rollouts.options[i].type(torch.cuda.LongTensor)))
                     V_Omega = selection_log_prob * values 
 
                     # Update termination parameters 
@@ -245,7 +245,7 @@ def main():
                         Variable(rollouts.observations[i]),
                         Variable(rollouts.states[i]),
                         Variable(rollouts.masks[i]),
-                        Variable(termination.type(torch.LongTensor)), 
+                        Variable(termination.type(torch.cuda.LongTensor)),
                         rollouts.options[i+1])
                     left_values = []
                     right_values = []
