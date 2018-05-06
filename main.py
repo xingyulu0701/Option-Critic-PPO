@@ -46,7 +46,7 @@ except OSError:
 writer = SummaryWriter(log_dir=args.log_dir)
 
 num_options = 2
-
+plot_index = 0
 def main():
     print("#######")
     print("WARNING: All rewards are clipped or normalized so you need to use a monitor (see envs.py) or visdom plot to get true rewards")
@@ -294,8 +294,8 @@ def main():
                        final_rewards.min(),
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
-            writer.add_scaler("data/final_reward", final_rewards.max())
-
+            writer.add_scaler("final_reward_max", final_rewards.max(), plot_index)
+            plot_index += 1
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
