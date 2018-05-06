@@ -195,8 +195,8 @@ class CNNPolicy(FFPolicy):
         # self.conv1 = nn.Conv2d(num_inputs, 32, 8, stride=4)
         # self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
         # self.conv3 = nn.Conv2d(64, 64, 3, stride=1)
-        self.conv1 = nn.Conv2d(num_inputs, 16, 3, stride=1, padding=1),
-        self.conv2 = nn.Conv2d(16, 16, 3, stride=1, padding=1),
+        self.conv1 = nn.Conv2d(num_inputs, 16, 3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(16, 16, 3, stride=1, padding=1)
         # self.conv3 = nn.Conv2d(16, 16, 3, stride=1, padding=1),
         # self.linear1 = nn.Linear(400, 512)
         self.train()
