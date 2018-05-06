@@ -83,9 +83,9 @@ class OptionCritic(FFPolicy):
         super(OptionCritic, self).__init__()
         self.num_options = num_options
         self.featureNN = CNNPolicy(num_inputs, use_gru)
-        self.optionSelection = OptionPolicy(64, num_options, None, use_gru)
-        self.intraOption = [OptionPolicy(64, None, action_space, use_gru) for i in range(num_options)]
-        self.terminationOption = [OptionPolicy(64, 2, None, use_gru) for i in range(num_options)]
+        self.optionSelection = OptionPolicy(16, num_options, None, use_gru)
+        self.intraOption = [OptionPolicy(16, None, action_space, use_gru) for i in range(num_options)]
+        self.terminationOption = [OptionPolicy(16, 2, None, use_gru) for i in range(num_options)]
         # self.state_values = torch.zeros(num_states)
         for i in range(num_options):
            self.add_module("intra" + str(i), self.intraOption[i])
@@ -156,7 +156,7 @@ class OptionPolicy(FFPolicy):
                 raise NotImplementedError
         else:
             self.dist = Categorical(512, num_outputs)
-        self.conv1 = nn.Conv2d(16, 16, 3, stride = 1, padding = 1)
+        self.conv1 = nn.Conv2d(num_inputs, 16, 3, stride = 1, padding = 1)
         self.linear1 = nn.Linear(400, 512)
         self.linear_critic = nn.Linear(512, 1)
         self.train()
@@ -182,7 +182,7 @@ class OptionPolicy(FFPolicy):
     def forward(self, inputs, states, masks):
         x = self.conv1(inputs / 255.0)
         x = F.relu(x)
-        x = x.view(-1, 1600)
+        x = x.view(-1, 400)
         x = self.linear1(x)
         x = F.relu(x)
         value = self.linear_critic(x)
