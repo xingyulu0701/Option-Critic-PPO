@@ -22,7 +22,7 @@ from model import CNNPolicy, MLPPolicy, OptionCritic
 from storage import RolloutStorage
 from visualize import visdom_plot
 
-
+from grid_world_env import get_test_env
 args = get_args()
 
 assert args.algo in ['a2c', 'ppo', 'acktr']
@@ -59,8 +59,9 @@ def main():
         viz = Visdom(port=args.port)
         win = None
 
-    envs = [make_env(args.env_name, args.seed, i, args.log_dir) for i in range(args.num_processes)]
+    # envs = [make_env(args.env_name, args.seed, i, args.log_dir) for i in range(args.num_processes)]
     # env = get_test_env("001")
+    envs = [lambda: get_test_env("000") for _ in range(args.num_processes)]
     # num_states = len(env.all_possible_states())
     if args.num_processes > 1:
         envs = SubprocVecEnv(envs)

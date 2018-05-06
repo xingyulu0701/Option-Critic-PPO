@@ -156,8 +156,8 @@ class OptionPolicy(FFPolicy):
                 raise NotImplementedError
         else:
             self.dist = Categorical(512, num_outputs)
-        self.conv1 = nn.Conv2d(64, 64, 3, stride = 1)
-        self.linear1 = nn.Linear(1600, 512)
+        self.conv1 = nn.Conv2d(16, 16, 3, stride = 1, padding = 1)
+        self.linear1 = nn.Linear(400, 512)
         self.linear_critic = nn.Linear(512, 1)
         self.train()
         self.reset_parameters()
@@ -192,10 +192,13 @@ class OptionPolicy(FFPolicy):
 class CNNPolicy(FFPolicy):
     def __init__(self, num_inputs, use_gru):
         super(CNNPolicy, self).__init__()
-        self.conv1 = nn.Conv2d(num_inputs, 32, 8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, 3, stride=1)
-
+        # self.conv1 = nn.Conv2d(num_inputs, 32, 8, stride=4)
+        # self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
+        # self.conv3 = nn.Conv2d(64, 64, 3, stride=1)
+        self.conv1 = nn.Conv2d(num_inputs, 16, 3, stride=1, padding=1),
+        self.conv2 = nn.Conv2d(16, 16, 3, stride=1, padding=1),
+        # self.conv3 = nn.Conv2d(16, 16, 3, stride=1, padding=1),
+        # self.linear1 = nn.Linear(400, 512)
         self.train()
         self.reset_parameters()
 
@@ -212,7 +215,7 @@ class CNNPolicy(FFPolicy):
         relu_gain = nn.init.calculate_gain('relu')
         self.conv1.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
-        self.conv3.weight.data.mul_(relu_gain)
+        # self.conv3.weight.data.mul_(relu_gain)
         
     def forward(self, inputs, states, masks):
         x = self.conv1(inputs / 255.0)
@@ -220,9 +223,9 @@ class CNNPolicy(FFPolicy):
 
         x = self.conv2(x)
         x = F.relu(x)
-
-        x = self.conv3(x)
-        x = F.relu(x)
+        #
+        # x = self.conv3(x)
+        # x = F.relu(x)
 
         return x
 
